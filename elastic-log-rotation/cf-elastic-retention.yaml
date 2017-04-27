@@ -3,7 +3,7 @@ Description: Elastic LogRotation Stack
 Parameters:
   TagName:
     Type: String
-    Default: 1234
+    Default: tag
     Description: Provide a Tag name to identify the architecture.
   ElasticSearchURL:
     Type: String
@@ -13,6 +13,11 @@ Parameters:
     Type: Number
     Default: 30
     Description: Retention Period.
+  Email:
+    Type: String
+    Default: abc@example.com
+    Description: Email to send daily log retention status.
+
 
 Metadata:
   AWS::CloudFormation::Interface:
@@ -26,6 +31,10 @@ Metadata:
         Parameters:
           - ElasticSearchURL
           - RetentionDateOffset
+      - Label:
+          default: Notification Email
+        Parameters:
+          - Email
 
 Resources:
   LambdaExecutionRole:
@@ -44,7 +53,7 @@ Resources:
             }
           ]
         }
-      RoleName: elastic_retention_lambda_role
+      RoleName: !Sub ${TagName}_elastic_retention_lambda_role
       Path: /
       Policies:
        - PolicyName: LambdaLogingRole
@@ -70,11 +79,11 @@ Resources:
     Type: "AWS::SNS::Topic"
     DependsOn: LambdaExecutionRole
     Properties:
-      DisplayName: Log Manager
+      DisplayName: !Sub ${TagName} Log Manager
       Subscription:
-        - Endpoint: neeraj@qburst.com
+        - Endpoint: !Ref Email
           Protocol: email
-      TopicName: elastic_retention_mailer
+      TopicName: !Sub ${TagName}_elastic_retention_mailer
 
 
   LambdaFunction:
@@ -112,7 +121,7 @@ Resources:
               return response
 
       Description: Lambda function to trigger monthly log rotation.
-      FunctionName: lambda_function
+      FunctionName: !Sub ${TagName}_lambda_function
       Handler: index.lambda_handler
       Role : !GetAtt LambdaExecutionRole.Arn
       Runtime: python2.7
@@ -123,7 +132,7 @@ Resources:
     DependsOn: LambdaFunction
     Properties:
       Description: Trigger daily log retention
-      Name: DailyRetentionTrigger
+      Name: !Sub ${TagName}_daily_retention
       ScheduleExpression: rate(1 day)
       State: ENABLED
       Targets:
