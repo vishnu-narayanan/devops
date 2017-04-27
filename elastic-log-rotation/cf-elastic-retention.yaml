@@ -1,5 +1,32 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: Elastic LogRotation Stack
+Parameters:
+  TagName:
+    Type: String
+    Default: 1234
+    Description: Provide a Tag name to identify the architecture.
+  ElasticSearchURL:
+    Type: String
+    Default: http://<url>/
+    Description: Elasticsearch Service URL.
+  RetentionDateOffset:
+    Type: Number
+    Default: 30
+    Description: Retention Period.
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: Infrastructure Configuration
+        Parameters:
+          - TagName
+      - Label:
+          default: "Retention"
+        Parameters:
+          - ElasticSearchURL
+          - RetentionDateOffset
+
 Resources:
   LambdaExecutionRole:
     Type: "AWS::IAM::Role"
@@ -62,8 +89,9 @@ Resources:
 
           def lambda_handler(event,context):
               #Creating delete request
-              elasticUrl="https://search-nj-paster-a5bdu22wqq7yxsdlz3qtyxekmm.ap-northeast-1.es.amazonaws.com/"
-              pipe=subprocess.Popen('date +%Y.%m.%d', stdout=subprocess.PIPE, shell=True)
+              elasticUrl='${ElasticSearchURL}'
+              dateCmd='date --date="${RetentionDateOffset} day ago" +%Y.%m.%d'
+              pipe=subprocess.Popen(dateCmd, stdout=subprocess.PIPE, shell=True)
               (output,error)=pipe.communicate()
               date=output.replace('\n','')
               index="cwl-"+date

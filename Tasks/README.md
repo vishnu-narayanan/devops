@@ -7,8 +7,3 @@
 - AWS::Lambda::Function
 - AWS::Events::Rule
 - AWS::Lambda::Permission
-
-## Parameters
-- TagName
-- ElasticSearchURL
-- RetentionDateOffset
