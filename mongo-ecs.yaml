@@ -1,0 +1,51 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Service and TaskDefinition
+
+Resources:
+  servicedefinition:
+    Type: "AWS::ECS::Service"
+    Properties: 
+      Cluster: mongo-autoscale
+      DesiredCount: 1
+      ServiceName: vmongorocks
+      Role: ecsServiceRole
+      LoadBalancers:
+        - TargetGroupArn: arn:aws:elasticloadbalancing:eu-west-1:145725228555:targetgroup/vn-tg/442b2e7c28838658
+          ContainerPort: 27017
+          ContainerName: vmongo
+      TaskDefinition: !Ref mongotaskdefinition
+
+  mongotaskdefinition:
+    Type: "AWS::ECS::TaskDefinition"
+    Properties: 
+      Family: vnmongo
+      ContainerDefinitions:
+        - Cpu: 0
+          Essential: true
+          Image: mongo
+          Memory: 256
+          Name: vmongo
+          PortMappings:
+            - ContainerPort: 27017
+              HostPort: 0
+        - Command:
+            - "apt-get update && apt-get install -y wget && wget https://s3-eu-west-1.amazonaws.com/vnxbucket/init.json -P /tmp/ && pwd && cat /tmp/init.json && mongoimport --host=vmongo --jsonArray --db vn --collection people --file /tmp/init.json"
+          Cpu: 0
+          EntryPoint:
+            - "sh"
+            - "-c"
+          Essential: false
+          Image: mongo
+          Links:
+            - vmongo
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: vn-mongo
+              awslogs-region: eu-west-1
+              awslogs-stream-prefix: seed-log2
+          Memory: 256
+          Name: seed
+          
+        
+ 
