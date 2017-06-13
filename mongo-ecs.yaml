@@ -1,35 +1,108 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: Service and TaskDefinition
-
+Description: Infrastructure for Mongo DB behind Loadbalancer
+Parameters:
+  TagName:
+    Type: String
+    Description: Tag name for the infrastructure
+  VPC:
+    Type: String
+    Default: vpc-05df9161 
+    Description: Name of the vpc used in the cluster.
+  ClusterName:
+    Type: String
+    Default: mongo-autoscale
+    Description: Name of the cluster to which service is to be deployed.
+  ContainerInstancePort:
+    Type: Number
+    Default: 27017
+    Description: Value for Instance port to which container port is to be mapped [49153 to 65535].
+  SubnetValue:
+    Type: String
+    Default: subnet-eda8f79b 
+    Description: Name of the subnet to which loadbalancer should be attached.
+  BucketName:
+    Type: String
+    Default: vnxbucket
+    Description: Specify the bucket name where seed data resides.
 Resources:
-  servicedefinition:
+  ECSTaskS3BucketRole:
+      Type: AWS::IAM::Role
+      Properties:
+        RoleName: !Sub ${TagName}-ecsTaskS3BucketRole
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Principal: {Service: [ecs-tasks.amazonaws.com]}
+            Action: ['sts:AssumeRole']
+        Path: /
+        Policies:
+        - PolicyName: !Sub ${TagName}-ecsTaskS3Policy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 's3:GetObject'
+                Resource: !Sub "arn:aws:s3:::${BucketName}/*"
+
+  PublicSecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupDescription: Public Security group for the architecture
+      SecurityGroupIngress:
+        - CidrIp: '0.0.0.0/0'
+          IpProtocol: -1
+          ToPort: -1
+      VpcId: !Ref VPC
+
+  LoadBalancer:
+    DependsOn: PublicSecurityGroup
+    Type: "AWS::ElasticLoadBalancing::LoadBalancer"
+    Properties:
+      Listeners:
+        - InstancePort: !Ref ContainerInstancePort
+          InstanceProtocol: TCP
+          LoadBalancerPort: 80
+          Protocol: TCP
+      SecurityGroups:
+        - !Ref PublicSecurityGroup
+      Subnets:
+        - !Ref SubnetValue  
+
+  ServiceDefinition:
+    DependsOn: LoadBalancer
     Type: "AWS::ECS::Service"
     Properties: 
-      Cluster: mongo-autoscale
+      Cluster: !Ref ClusterName
       DesiredCount: 1
-      ServiceName: vmongorocks
+      ServiceName: !Sub ${TagName}-mongo
       Role: ecsServiceRole
       LoadBalancers:
-        - TargetGroupArn: arn:aws:elasticloadbalancing:eu-west-1:145725228555:targetgroup/vn-tg/442b2e7c28838658
+        - LoadBalancerName: !Ref LoadBalancer
           ContainerPort: 27017
-          ContainerName: vmongo
-      TaskDefinition: !Ref mongotaskdefinition
+          ContainerName: mongo
+      TaskDefinition: !Ref MongoTaskDefinition
 
-  mongotaskdefinition:
+  MongoTaskDefinition:
+    DependsOn: 
+      - LoadBalancer
+      - ECSTaskS3BucketRole
     Type: "AWS::ECS::TaskDefinition"
     Properties: 
-      Family: vnmongo
+      Family: mongo
+      TaskRoleArn: !GetAtt ECSTaskS3BucketRole.Arn
       ContainerDefinitions:
         - Cpu: 0
           Essential: true
           Image: mongo
           Memory: 256
-          Name: vmongo
+          Name: mongo
           PortMappings:
             - ContainerPort: 27017
-              HostPort: 0
+              HostPort: !Ref ContainerInstancePort 
         - Command:
-            - "apt-get update && apt-get install -y wget && wget https://s3-eu-west-1.amazonaws.com/vnxbucket/init.json -P /tmp/ && pwd && cat /tmp/init.json && mongoimport --host=vmongo --jsonArray --db vn --collection people --file /tmp/init.json"
+            - !Sub "apt-get update && apt-get install awscli -y && aws s3 cp s3://${BucketName}/mongo-seed-data.json /tmp/ && cat /tmp/mongo-seed-data.json && mongoimport --host=mongo --jsonArray --db mongo --collection people --file /tmp/mongo-seed-data.json"
           Cpu: 0
           EntryPoint:
             - "sh"
@@ -37,7 +110,7 @@ Resources:
           Essential: false
           Image: mongo
           Links:
-            - vmongo
+            - mongo
           LogConfiguration:
             LogDriver: awslogs
             Options:
@@ -46,6 +119,10 @@ Resources:
               awslogs-stream-prefix: seed-log2
           Memory: 256
           Name: seed
+Outputs:
+  LoadBalancerName:
+    Description: Information about the value
+    Value: !GetAtt LoadBalancer.DNSName
           
         
  
