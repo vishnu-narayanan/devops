@@ -1,2 +1,2 @@
 #!/usr/bin/env bash
-echo "initiating github release flow"
+echo "initiating github release flow.."
